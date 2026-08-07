@@ -1,0 +1,36 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+ENV/
+
+# --- Streamlit ---
+.streamlit/secrets.toml
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- NLTK cache (re-downloaded automatically on first run) ---
+nltk_data/
+
+# --- Dataset (not needed by the deployed app, only the training notebook) ---
+Dataset/
+WELFake_Dataset.csv
+*.csv
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Env / secrets ---
+.env
