@@ -28,7 +28,6 @@ Python, pandas, scikit-learn, NLTK for text preprocessing, and Streamlit for the
 Clone the repo, install the dependencies, and make sure `tfidf_vectorizer.pkl` and `linear_svm.pkl` are sitting inside the `Models/` folder (they're already included in this repo, so you shouldn't need to retrain anything unless you want to).
 
 
-
 The first run will download a few small NLTK resources (stopwords, tokenizer, lemmatizer data) automatically — that only happens once.
 
 ## A Few Honest Caveats
