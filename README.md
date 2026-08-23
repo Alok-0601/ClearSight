@@ -3,7 +3,7 @@
 A machine learning project that classifies news articles as **Real** or **Fake** based on their headline and body text. The final model is wrapped in a small Streamlit app so you can paste in an article and get a prediction instantly, instead of just looking at accuracy numbers in a notebook. 
 
 ## Live Demo
-
+ 
 https://newsverifierr.streamlit.app/
 
 ## Dataset
