@@ -34,3 +34,7 @@ Thumbs.db
 
 # --- Env / secrets ---
 .env
+
+# API runtime and test output
+.pytest_cache/
+*.log

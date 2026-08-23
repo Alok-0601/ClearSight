@@ -33,3 +33,49 @@ The first run will download a few small NLTK resources (stopwords, tokenizer, le
 ## A Few Honest Caveats
 
 The confidence score shown in the app isn't a calibrated probability — linear SVMs don't naturally produce one, so it's derived from how far a prediction sits from the decision boundary. Treat it as a relative signal, not a precise percentage. The model is also only as good as the dataset it learned from, so it reflects the writing patterns and topics present in WELFake at the time it was collected. It's a useful second opinion, not a substitute for actually checking a claim against a reliable source.
+
+## Backend API and evidence pipeline
+
+The `backend/` package is the API/automation contribution. It keeps the existing
+TF-IDF + Linear SVM model unchanged and adds a clean FastAPI boundary around it.
+It accepts text or an article URL, extracts article metadata for URL submissions,
+returns the model result, and optionally retrieves normalized supporting context
+from Google Fact Check Tools and GNews.
+
+Evidence is deliberately conservative: related articles remain `related` or
+`not_determined`. A result is labelled `supports_claim` or `contradicts_claim`
+only when a fact-check rating has high lexical overlap with the submitted article.
+This is evidence retrieval, not autonomous fact-checking.
+
+### Run the API
+
+```bash
+pip install -r requirements.txt
+copy .env.example .env
+uvicorn backend.main:app --reload
+```
+
+Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
+Without API keys, prediction endpoints continue to work and report those sources
+as `not_configured`. Add `GOOGLE_FACT_CHECK_API_KEY` and/or `GNEWS_API_KEY` to
+`.env` to enable live retrieval.
+
+### Endpoints
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | API availability check |
+| `POST` | `/verify` | Verify raw text (`title` optional, `text` required) |
+| `POST` | `/verify/url` | Fetch, extract, and verify a public article URL |
+| `GET` | `/verification/{id}` | Fetch one in-memory verification result |
+| `GET` | `/history` | Fetch recent in-memory verification summaries |
+
+Example request:
+
+```json
+POST /verify
+{
+  "title": "Example headline",
+  "text": "At least forty characters of article content are required here."
+}
+```

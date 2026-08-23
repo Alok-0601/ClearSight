@@ -3,3 +3,9 @@ scikit-learn
 pandas
 numpy
 nltk
+fastapi
+uvicorn[standard]
+httpx
+beautifulsoup4
+python-dotenv
+pytest
