@@ -1,320 +1,230 @@
-"""
-app.py — Fake News Detector (Streamlit)
+"""Streamlit client for the ClearSight Verification API.
 
-Loads tfidf_vectorizer.pkl + linear_svm.pkl (produced by Save_Model.ipynb),
-runs the same preprocessing pipeline used at training time (see preprocess.py),
-and classifies a headline + article body as REAL or FAKE.
-
-Run locally:
-    streamlit run app.py
-
-Deploy:
-    Push this folder (app.py, preprocess.py, requirements.txt, .gitignore,
-    tfidf_vectorizer.pkl, linear_svm.pkl) to a GitHub repo, then deploy on
-    https://share.streamlit.io pointing at app.py.
+The Streamlit app is intentionally a client: prediction, URL extraction and
+evidence retrieval happen in ``backend/main.py``. This keeps the web UI easy
+to deploy on Streamlit Community Cloud while the API remains reusable by any
+future frontend.
 """
 
-import pickle
-from pathlib import Path
+import os
+from typing import Any
 
-import numpy as np
+import httpx
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
-from preprocess import preprocess, ensure_nltk_resources
 
-APP_DIR = Path(__file__).parent
-LABELS = {0: "REAL", 1: "FAKE"}  
-# --------------------------------------------------------------------------
-# Page config
-# --------------------------------------------------------------------------
+DEFAULT_LOCAL_API_URL = "http://127.0.0.1:8000"
+
+
+def configured_api_url() -> str:
+    """Read the API base URL from Streamlit secrets or a local environment."""
+    fallback = os.getenv("BACKEND_API_URL", DEFAULT_LOCAL_API_URL)
+    try:
+        value = st.secrets.get("BACKEND_API_URL", fallback)
+    except StreamlitSecretNotFoundError:
+        value = fallback
+    return str(value).rstrip("/")
+
+
+API_URL = configured_api_url()
+
 st.set_page_config(
-    page_title="Fake News Detector",
+    page_title="ClearSight News Verifier",
     page_icon="📰",
     layout="centered",
     initial_sidebar_state="expanded",
 )
 
-# --------------------------------------------------------------------------
-# Styling
-# --------------------------------------------------------------------------
 st.markdown(
     """
     <style>
     .stApp { background-color: #0e1117; }
-
     .app-header {
         background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-        padding: 2.2rem 2rem;
-        border-radius: 16px;
-        text-align: center;
-        margin-bottom: 1.6rem;
-        box-shadow: 0 8px 24px rgba(79, 70, 229, 0.25);
+        padding: 2.2rem 2rem; border-radius: 16px; text-align: center;
+        margin-bottom: 1.6rem; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.25);
     }
-    .app-header h1 {
-        color: white;
-        font-size: 2rem;
-        margin: 0 0 0.4rem 0;
-        font-weight: 700;
-    }
-    .app-header p {
-        color: rgba(255,255,255,0.88);
-        font-size: 0.98rem;
-        margin: 0;
-    }
-
-    div.stButton > button {
-        border-radius: 10px;
-        font-weight: 600;
-        border: 1px solid rgba(255,255,255,0.15);
-        transition: transform 0.05s ease-in-out;
-    }
-    div.stButton > button:hover {
-        transform: translateY(-1px);
-        border-color: #7C3AED;
-        color: #7C3AED;
-    }
+    .app-header h1 { color: white; font-size: 2rem; margin: 0 0 0.4rem; font-weight: 700; }
+    .app-header p { color: rgba(255,255,255,0.88); font-size: 0.98rem; margin: 0; }
     div.stFormSubmitButton > button {
         background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-        color: white;
-        border: none;
-        font-size: 1.02rem;
-        padding: 0.6rem 0;
+        color: white; border: none; font-size: 1.02rem; padding: 0.6rem 0;
     }
-    div.stFormSubmitButton > button:hover {
-        opacity: 0.92;
-        color: white;
-    }
-
     .result-card {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        padding: 1.4rem 1.6rem;
-        border-radius: 14px;
-        margin-top: 1.2rem;
-        margin-bottom: 0.6rem;
-        border-left: 6px solid;
+        display: flex; align-items: center; gap: 1rem; padding: 1.4rem 1.6rem;
+        border-radius: 14px; margin: 1.2rem 0 0.6rem; border-left: 6px solid;
     }
-    .result-card.real {
-        background: rgba(34, 197, 94, 0.10);
-        border-color: #22C55E;
-    }
-    .result-card.fake {
-        background: rgba(239, 68, 68, 0.10);
-        border-color: #EF4444;
-    }
+    .result-card.real { background: rgba(34, 197, 94, 0.10); border-color: #22C55E; }
+    .result-card.fake { background: rgba(239, 68, 68, 0.10); border-color: #EF4444; }
     .result-icon { font-size: 2.2rem; line-height: 1; }
-    .result-label {
-        font-size: 1.4rem;
-        font-weight: 800;
-        letter-spacing: 0.02em;
-    }
+    .result-label { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.02em; }
     .result-card.real .result-label { color: #22C55E; }
     .result-card.fake .result-label { color: #EF4444; }
-    .result-sub {
-        font-size: 0.92rem;
-        color: rgba(255,255,255,0.7);
-        margin-top: 0.15rem;
-    }
+    .result-sub { font-size: 0.92rem; color: rgba(255,255,255,0.7); margin-top: 0.15rem; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# --------------------------------------------------------------------------
-# Cached setup: nltk resources + model artifacts
-# --------------------------------------------------------------------------
-@st.cache_resource(show_spinner="Setting up language resources...")
-def setup_nltk():
-    ensure_nltk_resources()
-    return True
+
+def api_error_message(response: httpx.Response) -> str:
+    """Return the API's consistent error message when one is available."""
+    try:
+        body = response.json()
+    except ValueError:
+        return response.text or f"The API returned HTTP {response.status_code}."
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, list):
+        return "The submitted data was invalid. Please check the input and try again."
+    return f"The API returned HTTP {response.status_code}."
 
 
-@st.cache_resource(show_spinner="Loading model...")
-def load_artifacts():
-    vec_path = APP_DIR / "Models" / "tfidf_vectorizer.pkl"
-    model_path = APP_DIR / "Models" / "linear_svm.pkl"
-    if not vec_path.exists() or not model_path.exists():
-        return None, None
-    with open(vec_path, "rb") as f:
-        tfidf = pickle.load(f)
-    with open(model_path, "rb") as f:
-        model = pickle.load(f)
-    return tfidf, model
+def request_verification(path: str, payload: dict[str, str]) -> dict[str, Any] | None:
+    try:
+        with httpx.Client(timeout=httpx.Timeout(65.0, connect=10.0)) as client:
+            response = client.post(f"{API_URL}{path}", json=payload)
+    except httpx.RequestError as exc:
+        st.error(
+            "The verification API could not be reached. "
+            f"Check the BACKEND_API_URL setting and that the API is running. ({exc})"
+        )
+        return None
+    if response.is_error:
+        st.error(api_error_message(response))
+        return None
+    return response.json()
 
 
-setup_nltk()
-tfidf, model = load_artifacts()
+def render_result(result: dict[str, Any]) -> None:
+    prediction = result["prediction"]
+    confidence = float(result["confidence"])
+    is_real = prediction == "REAL"
+    css_class = "real" if is_real else "fake"
+    icon = "✅" if is_real else "🚫"
 
-if tfidf is None or model is None:
-    st.error(
-        "Couldn't find **tfidf_vectorizer.pkl** and/or **linear_svm.pkl** in the `Models/` folder.\n\n"
-        "Place both files inside a `Models/` folder next to `app.py` before running Streamlit."
+    st.markdown(
+        f"""
+        <div class="result-card {css_class}">
+            <div class="result-icon">{icon}</div>
+            <div>
+                <div class="result-label">{prediction} NEWS</div>
+                <div class="result-sub">Model confidence: {confidence * 100:.1f}%</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.stop()
+    st.progress(min(max(confidence, 0.0), 1.0))
+    st.caption(result["confidence_note"])
 
-# --------------------------------------------------------------------------
-# Sidebar
-# --------------------------------------------------------------------------
+    article = result["article"]
+    st.subheader("Article details")
+    details = {
+        "Title": article.get("title") or "Not available",
+        "Publisher": article.get("publisher") or "Not available",
+        "Publication date": article.get("published_at") or "Not available",
+        "Extraction": article.get("extraction_method", "provided_text"),
+    }
+    st.json(details, expanded=False)
+    if article.get("url"):
+        st.link_button("Open submitted article", article["url"])
+
+    st.subheader("Retrieved evidence")
+    evidence = result.get("evidence", [])
+    if not evidence:
+        st.info("No matching evidence was returned. Configure one or both evidence APIs to enable live retrieval.")
+    for item in evidence:
+        label = f"{item['relation'].replace('_', ' ').title()} · {item['relevance']} relevance"
+        with st.expander(f"{item['type'].replace('_', ' ').title()}: {item['title']} — {label}"):
+            if item.get("publisher"):
+                st.caption(f"Publisher: {item['publisher']}")
+            if item.get("published_at"):
+                st.caption(f"Published: {item['published_at']}")
+            if item.get("rating"):
+                st.write(f"Rating: {item['rating']}")
+            if item.get("claim"):
+                st.write(f"Claim: {item['claim']}")
+            if item.get("summary"):
+                st.write(item["summary"])
+            st.caption(item["relation_reason"])
+            st.link_button("Open source", item["url"], key=f"source-{result['id']}-{item['url']}")
+
+    st.subheader("Evidence source status")
+    for source in result.get("sources", []):
+        status = source["status"]
+        if status == "ok":
+            st.success(f"{source['source']}: connected")
+        elif status == "not_configured":
+            st.warning(f"{source['source']}: not configured")
+        else:
+            st.error(f"{source['source']}: {source.get('detail') or 'request failed'}")
+
+    st.caption(f"Verification ID: {result['id']} · {result['created_at']}")
+    st.info("Evidence is retrieved context, not an automatic fact-check verdict. Cross-check important claims with primary sources.")
+
+
 with st.sidebar:
-    st.markdown("## 📰 About")
+    st.markdown("## 📰 About ClearSight")
     st.write(
-        "This app classifies news as **Real** or **Fake** using a "
-        "TF-IDF + Linear SVM model trained on the WELFake dataset "
-        "(~72,000 labeled news articles)."
+        "ClearSight combines the group's existing TF-IDF + Linear SVM classifier "
+        "with optional fact-check and news evidence retrieval."
     )
-
-    st.markdown("### Test-set performance")
+    st.markdown("### API connection")
+    st.code(API_URL, language=None)
+    st.caption("Set `BACKEND_API_URL` in Streamlit secrets for the deployed site.")
+    st.markdown("### Model")
     m1, m2 = st.columns(2)
     m1.metric("Accuracy", "95.2%")
     m2.metric("F1 Score", "94.7%")
-    st.caption("ROC-AUC: 98.9%")
+    st.caption("WELFake dataset · confidence is an uncalibrated SVM margin.")
 
-    with st.expander("How it works"):
-        st.markdown(
-            "1. Clean text (strip URLs, emails, HTML, extra whitespace)\n"
-            "2. Lowercase + remove punctuation\n"
-            "3. Tokenize\n"
-            "4. Remove stopwords\n"
-            "5. Lemmatize\n"
-            "6. Vectorize with TF-IDF (unigrams + bigrams)\n"
-            "7. Classify with a linear SVM"
-        )
 
-    st.divider()
-    st.caption("Built with scikit-learn + Streamlit")
-
-# --------------------------------------------------------------------------
-# Header
-# --------------------------------------------------------------------------
 st.markdown(
     """
     <div class="app-header">
-        <h1>📰 Fake News Detector</h1>
-        <p>Paste a headline and article body — the model will judge whether it looks Real or Fake.</p>
+        <h1>📰 ClearSight News Verifier</h1>
+        <p>Classify an article and retrieve related fact-checking and news evidence.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# --------------------------------------------------------------------------
-# Example loader
-# --------------------------------------------------------------------------
-SAMPLE_REAL_TITLE = "Local Transit Authority Announces Expanded Bus Routes Starting Next Month"
-SAMPLE_REAL_TEXT = (
-    "The city transit authority confirmed on Tuesday that three new bus routes will "
-    "begin service next month, aiming to reduce commute times for residents in the "
-    "northern suburbs. Officials said the expansion follows a year-long review of "
-    "ridership data and public feedback sessions held earlier this year. Funding for "
-    "the new routes comes from a combination of state transportation grants and the "
-    "city's existing transit budget. Officials added that updated schedules will be "
-    "published on the authority's website closer to the launch date."
-)
+text_tab, url_tab = st.tabs(["Paste article text", "Verify article URL"])
 
-SAMPLE_FAKE_TITLE = "Scientists 'Confirm' Drinking Coffee Backwards Reverses Aging, Doctors Baffled"
-SAMPLE_FAKE_TEXT = (
-    "A viral post claims that a secret group of scientists has discovered that "
-    "drinking coffee while standing on one's head can reverse the aging process "
-    "by up to twenty years. According to the anonymous post, which cites no "
-    "actual research institution, thousands of people have supposedly tried the "
-    "method with dramatic results overnight. No peer-reviewed study, clinical "
-    "trial, or named researcher is mentioned anywhere in the claim, and medical "
-    "experts have not been able to verify any part of it."
-)
-
-if "headline_input" not in st.session_state:
-    st.session_state.headline_input = ""
-if "article_input" not in st.session_state:
-    st.session_state.article_input = ""
-
-st.write("**Not sure what to try?**")
-ex_col1, ex_col2, ex_col3 = st.columns(3)
-with ex_col1:
-    if st.button("📗 Real-style example", use_container_width=True):
-        st.session_state.headline_input = SAMPLE_REAL_TITLE
-        st.session_state.article_input = SAMPLE_REAL_TEXT
-with ex_col2:
-    if st.button("📕 Fake-style example", use_container_width=True):
-        st.session_state.headline_input = SAMPLE_FAKE_TITLE
-        st.session_state.article_input = SAMPLE_FAKE_TEXT
-with ex_col3:
-    if st.button("🗑️ Clear", use_container_width=True):
-        st.session_state.headline_input = ""
-        st.session_state.article_input = ""
-
-# --------------------------------------------------------------------------
-# Input form
-# --------------------------------------------------------------------------
-with st.form("news_form"):
-    headline = st.text_input(
-        "Headline (optional)",
-        key="headline_input",
-        placeholder="e.g. Local Council Approves New Park Funding",
-    )
-    article = st.text_area(
-        "Article text",
-        key="article_input",
-        height=220,
-        placeholder="Paste the full article text here...",
-    )
-    submitted = st.form_submit_button("🔍 Analyze", use_container_width=True)
-
-# --------------------------------------------------------------------------
-# Prediction
-# --------------------------------------------------------------------------
-if submitted:
-    if not article.strip():
-        st.warning("Please paste some article text before analyzing.")
-    else:
-        with st.spinner("Analyzing..."):
-            cleaned = preprocess(headline, article)
-
-            if not cleaned.strip():
-                st.warning(
-                    "After cleaning, there wasn't any usable text left to analyze "
-                    "(e.g. the input was only URLs, punctuation, or stopwords). "
-                    "Try pasting a longer excerpt."
-                )
-                st.stop()
-
-            vec = tfidf.transform([cleaned])
-            pred = int(model.predict(vec)[0])
-            score = float(model.decision_function(vec)[0])
-
-            # LinearSVC has no predict_proba — this squashes the decision
-            # margin into (0, 1) as a rough, uncalibrated confidence signal.
-            prob_real = 1.0 / (1.0 + np.exp(-score))
-            confidence = (1.0 - prob_real) if pred == 0 else prob_real
-
-        is_real = pred == 0
-        label_text = LABELS[pred]
-        css_class = "real" if is_real else "fake"
-        icon = "✅" if is_real else "🚫"
-
-        st.markdown(
-            f"""
-            <div class="result-card {css_class}">
-                <div class="result-icon">{icon}</div>
-                <div>
-                    <div class="result-label">{label_text} NEWS</div>
-                    <div class="result-sub">Model confidence: {confidence * 100:.1f}%</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+with text_tab:
+    with st.form("text_verification_form"):
+        title = st.text_input("Headline (optional)", placeholder="e.g. Local Council Approves New Park Funding")
+        text = st.text_area(
+            "Article text",
+            height=220,
+            placeholder="Paste at least a short article excerpt (40 characters or more)...",
         )
+        verify_text = st.form_submit_button("🔍 Verify article", use_container_width=True)
+    if verify_text:
+        if len(text.strip()) < 40:
+            st.warning("Please provide at least 40 characters of article text.")
+        else:
+            with st.spinner("Classifying article and retrieving evidence..."):
+                result = request_verification("/verify", {"title": title.strip(), "text": text.strip()})
+            if result:
+                render_result(result)
 
-        st.progress(min(max(confidence, 0.0), 1.0))
+with url_tab:
+    with st.form("url_verification_form"):
+        url = st.text_input("Public article URL", placeholder="https://example.com/news/article")
+        verify_url = st.form_submit_button("🔗 Extract and verify URL", use_container_width=True)
+    if verify_url:
+        if not url.strip():
+            st.warning("Please paste a public article URL.")
+        else:
+            with st.spinner("Extracting article, classifying it, and retrieving evidence..."):
+                result = request_verification("/verify/url", {"url": url.strip()})
+            if result:
+                render_result(result)
 
-        st.caption(
-            "Confidence is derived from the SVM's decision margin — a useful relative "
-            "signal, not a calibrated probability. Always cross-check important claims "
-            "against a trusted source."
-        )
-
-        with st.expander("See the cleaned text the model actually scored"):
-            preview = cleaned if len(cleaned) <= 2000 else cleaned[:2000] + " ..."
-            st.code(preview, language=None)
 
 st.divider()
-st.caption("TF-IDF + Linear SVM · trained on the WELFake dataset · for educational use, not a substitute for fact-checking.")
+st.caption("TF-IDF + Linear SVM · optional Google Fact Check Tools + GNews evidence · for educational use")
