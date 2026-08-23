@@ -23,7 +23,21 @@ app = FastAPI(
     description="ML fake-news classification with optional evidence retrieval.",
 )
 
-origins = [item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:8501").split(",") if item.strip()]
+# These are the public frontends shipped with this API.  Keep them in the
+# application configuration so a stale or missing Render environment variable
+# cannot take the live verification desk offline.
+DEFAULT_CORS_ORIGINS = {
+    "http://localhost:8501",
+    "http://127.0.0.1:8501",
+    "https://alok-0601.github.io",
+    "https://clearsightt.streamlit.app",
+}
+configured_origins = {
+    item.strip().rstrip("/")
+    for item in os.getenv("CORS_ORIGINS", "").split(",")
+    if item.strip()
+}
+origins = sorted(DEFAULT_CORS_ORIGINS | configured_origins)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
