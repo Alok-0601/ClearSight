@@ -1,4 +1,4 @@
-# ClearSight: A Machine Learning Based Fake News Detection System
+# ClearSight: A Machine Learning Based Fake News Detection System 
 
 ClearSight classifies news articles as **Real** or **Fake** and retrieves relevant evidence from optional external fact-check and news sources. The Streamlit interface is a client of the FastAPI verification service, so the same backend can serve the website and a future dedicated frontend.
 
