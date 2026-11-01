@@ -1,0 +1,32 @@
+# Runtime dependencies of the FastAPI backend only.
+#
+# Vercel reads this file in preference to requirements.txt, so the deployed API
+# does not install Streamlit. Streamlit Community Cloud reads requirements.txt
+# first, so the Streamlit client is unaffected by this file.
+[project]
+name = "clearsight-api"
+version = "1.0.0"
+description = "ClearSight Verification API"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "beautifulsoup4",
+    "fastapi",
+    "httpx",
+    # Pinned: preprocess.py relies on how this version resolves bundled nltk_data.
+    "nltk==3.10.4",
+    "numpy",
+    "python-dotenv",
+    # Pinned: Models/*.pkl were pickled with scikit-learn 1.6.1.
+    "scikit-learn==1.6.1",
+]
+
+[dependency-groups]
+test = ["pytest"]
+
+[tool.vercel]
+# Root app.py is the Streamlit client, so point Vercel at the FastAPI app.
+entrypoint = "backend.main:app"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

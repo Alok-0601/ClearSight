@@ -18,8 +18,10 @@ ENV/
 # --- Jupyter ---
 .ipynb_checkpoints/
 
-# --- NLTK cache (re-downloaded automatically on first run) ---
-nltk_data/
+# --- NLTK data ---
+# nltk_data/ is committed on purpose: serverless hosts have a read-only
+# filesystem, so preprocess.py loads these bundled resources instead of
+# downloading them.
 
 # --- Dataset (not needed by the deployed app, only the training notebook) ---
 Dataset/

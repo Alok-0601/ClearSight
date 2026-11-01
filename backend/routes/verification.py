@@ -18,7 +18,12 @@ store = VerificationStore()
 ml_service = MLService()
 
 
-async def _verify(article: Article) -> VerificationResponse:
+async def verify_article(article: Article, *, record: bool = True) -> VerificationResponse:
+    """Classify an article and gather evidence.
+
+    ``record=False`` keeps the result out of the public /history store, for
+    callers such as the Telegram bot whose input comes from private chats.
+    """
     try:
         prediction, confidence = await asyncio.to_thread(ml_service.predict, article.title, article.body)
     except ModelUnavailableError as exc:
@@ -37,23 +42,28 @@ async def _verify(article: Article) -> VerificationResponse:
         sources=sources,
         created_at=datetime.now(timezone.utc),
     )
-    store.add(verification)
+    if record:
+        store.add(verification)
     logger.info("verification_created id=%s prediction=%s evidence=%s", verification.id, prediction, len(evidence))
     return verification
 
 
+async def verify_article_url(url: str, *, record: bool = True) -> VerificationResponse:
+    try:
+        article = await extract_article(url)
+    except ArticleExtractionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return await verify_article(article, record=record)
+
+
 @router.post("/verify", response_model=VerificationResponse, status_code=status.HTTP_201_CREATED)
 async def verify_text(request: VerifyTextRequest) -> VerificationResponse:
-    return await _verify(Article(title=request.title, body=request.text.strip()))
+    return await verify_article(Article(title=request.title, body=request.text.strip()))
 
 
 @router.post("/verify/url", response_model=VerificationResponse, status_code=status.HTTP_201_CREATED)
 async def verify_url(request: VerifyUrlRequest) -> VerificationResponse:
-    try:
-        article = await extract_article(str(request.url))
-    except ArticleExtractionError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return await _verify(article)
+    return await verify_article_url(str(request.url))
 
 
 @router.get("/verification/{verification_id}", response_model=VerificationResponse)

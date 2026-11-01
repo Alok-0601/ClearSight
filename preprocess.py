@@ -20,17 +20,23 @@ Pipeline (identical order to training):
 
 import re
 import string
+from pathlib import Path
 
 import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
+# The resources are committed in nltk_data/ so serverless hosts (Vercel), whose
+# filesystem is read-only, never need to download them at request time.
+nltk.data.path.insert(0, str(Path(__file__).resolve().parent / "nltk_data"))
+
+# omw-1.4 (multilingual WordNet) is not listed: the English lemmatizer only
+# reads wordnet, so leaving it out does not change any preprocessed output.
 _REQUIRED_NLTK_RESOURCES = [
     ("tokenizers/punkt_tab", "punkt_tab"),
     ("corpora/stopwords", "stopwords"),
     ("corpora/wordnet", "wordnet"),
-    ("corpora/omw-1.4", "omw-1.4"),
 ]
 
 _lemmatizer = WordNetLemmatizer()
@@ -42,7 +48,9 @@ def ensure_nltk_resources() -> None:
     it's a no-op (fast lookup, no network call) once resources exist."""
     for path, package in _REQUIRED_NLTK_RESOURCES:
         try:
-            nltk.data.find(path)
+            # The trailing slash lets find() also match the zipped download
+            # (e.g. corpora/stopwords.zip/stopwords/), not only an extracted folder.
+            nltk.data.find(path + "/")
         except LookupError:
             nltk.download(package, quiet=True)
 
