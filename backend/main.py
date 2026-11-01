@@ -6,9 +6,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
-from backend.routes import router
+from backend.routes import router, telegram_router
 
 
 load_dotenv()
@@ -24,7 +24,7 @@ app = FastAPI(
 )
 
 # These are the public frontends shipped with this API.  Keep them in the
-# application configuration so a stale or missing Render environment variable
+# application configuration so a stale or missing hosting environment variable
 # cannot take the live verification desk offline.
 DEFAULT_CORS_ORIGINS = {
     "http://localhost:8501",
@@ -63,9 +63,15 @@ async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONRespons
     return JSONResponse(status_code=500, content={"error": "internal_server_error", "detail": "An unexpected error occurred."})
 
 
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    return RedirectResponse("/docs")
+
+
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "clearsight-api"}
 
 
 app.include_router(router)
+app.include_router(telegram_router)

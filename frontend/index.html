@@ -453,13 +453,13 @@
 <script>
   /* Local dev (localhost/127.0.0.1/file://) talks to the local API by default.
      Anywhere else (e.g. this page hosted on GitHub Pages) talks to the deployed
-     Render API. Either way it's editable from the Settings panel. */
+     Vercel API. Either way it's editable from the Settings panel. */
   function defaultApiUrl(){
     const host = window.location.hostname;
     if(host === 'localhost' || host === '127.0.0.1' || host === ''){
       return 'http://127.0.0.1:8000';
     }
-    return 'https://clearsight-verification-api.onrender.com';
+    return 'https://clearsight-api.vercel.app';
   }
   const state = { apiUrl: defaultApiUrl(), loadingInterval: null };
 

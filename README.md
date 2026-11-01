@@ -77,8 +77,28 @@ as `not_configured`. Add `GOOGLE_FACT_CHECK_API_KEY` and/or `GNEWS_API_KEY` to
 ### Deploy the Streamlit interface with the API
 
 Streamlit Community Cloud runs the Streamlit entry point, while FastAPI must run
-as a separate web service. Deploy this repository's API using a Python/ASGI host
-such as Render, Railway, or Fly.io with this start command:
+as a separate web service.
+
+**Vercel (free Hobby plan).** The repository is already configured:
+`pyproject.toml` points Vercel at `backend.main:app` (the root `app.py` is the
+Streamlit client) and lists only the API's dependencies, and `.vercelignore`
+keeps the Streamlit client, notebooks and frontends out of the bundle. NLTK
+data is committed in `nltk_data/` because Vercel's filesystem is read-only.
+
+1. On vercel.com, **Add New → Project** and import this GitHub repository. Leave
+   the framework preset and root directory at their defaults.
+2. Under **Environment Variables**, add `GOOGLE_FACT_CHECK_API_KEY` and
+   `GNEWS_API_KEY` (and the Telegram variables below, if using the bot).
+3. Deploy, then open `https://<project>.vercel.app/health`.
+
+**Any Docker host.** A `Dockerfile` is included:
+
+```bash
+docker build -t clearsight-api .
+docker run -p 8000:8000 --env-file .env clearsight-api
+```
+
+**Other Python hosts** (Render, Railway, Fly.io) can use this start command:
 
 ```bash
 uvicorn backend.main:app --host 0.0.0.0 --port $PORT
@@ -104,6 +124,11 @@ prediction, extracted metadata, evidence, and source status.
 | `POST` | `/verify/url` | Fetch, extract, and verify a public article URL |
 | `GET` | `/verification/{id}` | Fetch one in-memory verification result |
 | `GET` | `/history` | Fetch recent in-memory verification summaries |
+| `POST` | `/telegram/webhook` | Telegram bot updates (only when the bot is configured) |
+
+History is kept in memory. On a serverless host such as Vercel each instance
+has its own memory and instances are recycled, so `/history` and
+`/verification/{id}` only show recent results from the instance that answers.
 
 Example request:
 
@@ -114,3 +139,34 @@ POST /verify
   "text": "At least forty characters of article content are required here."
 }
 ```
+
+## Telegram bot
+
+The API also serves a Telegram bot through a webhook, so it needs no extra
+server. Send the bot an article link or at least 40 characters of article text
+and it replies with the model verdict, confidence and any related fact checks.
+In groups, reply to a message with `/check`.
+
+Bot checks are not added to `/history`, because they come from private chats.
+
+### Set it up
+
+1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`
+   and copy the token.
+2. Choose a webhook secret, for example
+   `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+3. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` as environment
+   variables on the API host and redeploy.
+4. With the same two values in your local `.env`, register the webhook against
+   the production URL:
+
+   ```bash
+   python scripts/set_telegram_webhook.py https://<project>.vercel.app
+   ```
+
+   Use the production domain, not a per-deployment preview URL: Vercel protects
+   preview URLs with a login, which Telegram cannot pass.
+
+The webhook rejects requests without the secret header, handles each update
+within the request (serverless functions may stop once a response is sent),
+and limits each chat to 5 checks per minute.
