@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["verification"])
 store = VerificationStore()
 ml_service = MLService()
+# Below this margin-based confidence the verdict is reported as UNCERTAIN
+# instead of REAL/FAKE; the raw model output stays in `prediction`.
+UNCERTAIN_BELOW = 0.65
 
 
 async def verify_article(article: Article, *, record: bool = True) -> VerificationResponse:
@@ -35,8 +38,12 @@ async def verify_article(article: Article, *, record: bool = True) -> Verificati
     verification = VerificationResponse(
         id=str(uuid4()),
         prediction=prediction,
+        verdict=prediction if confidence >= UNCERTAIN_BELOW else "UNCERTAIN",
         confidence=confidence,
-        confidence_note="Confidence is derived from the Linear SVM decision margin and is not a calibrated probability.",
+        confidence_note=(
+            "Confidence is derived from the Linear SVM decision margin and is not a calibrated probability. "
+            f"Results below {UNCERTAIN_BELOW:.0%} are reported as UNCERTAIN."
+        ),
         article=article,
         evidence=evidence,
         sources=sources,
@@ -44,7 +51,10 @@ async def verify_article(article: Article, *, record: bool = True) -> Verificati
     )
     if record:
         store.add(verification)
-    logger.info("verification_created id=%s prediction=%s evidence=%s", verification.id, prediction, len(evidence))
+    logger.info(
+        "verification_created id=%s prediction=%s verdict=%s evidence=%s",
+        verification.id, prediction, verification.verdict, len(evidence),
+    )
     return verification
 
 

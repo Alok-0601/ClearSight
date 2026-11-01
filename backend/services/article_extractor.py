@@ -10,12 +10,25 @@ from bs4 import BeautifulSoup
 from backend.schemas import Article
 
 
+# Pages beyond this size are cut off; article text is near the top of the HTML.
+MAX_PAGE_BYTES = 2_000_000
+# The fetcher identifies itself honestly, with a contact URL as sites such as
+# Wikipedia ask of automated clients. Sites that block automated readers are
+# respected; the user is asked to paste the text instead.
+_REQUEST_HEADERS = {
+    "User-Agent": "ClearSightBot/1.0 (+https://github.com/Alok-0601/ClearSight; educational fact-check project)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-IN,en;q=0.9",
+}
+_BLOCKED_STATUSES = {401, 403, 429}
+
+
 class ArticleExtractionError(ValueError):
     pass
 
 
 async def _ensure_public_host(host: str) -> None:
-    """Reject loopback/private destinations before fetching a user URL."""
+    """Reject any destination that is not on the public internet before fetching a user URL."""
     if host.lower() == "localhost":
         raise ArticleExtractionError("Local URLs cannot be fetched.")
     try:
@@ -24,8 +37,19 @@ async def _ensure_public_host(host: str) -> None:
         raise ArticleExtractionError("The article host could not be resolved.") from exc
     for address in addresses:
         ip = ipaddress.ip_address(address[4][0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
+        # is_global also excludes ranges such as carrier-grade NAT (100.64.0.0/10)
+        # that is_private does not cover.
+        if not ip.is_global:
             raise ArticleExtractionError("Private or local network URLs cannot be fetched.")
+
+
+async def _read_limited(response: httpx.Response) -> str:
+    content = bytearray()
+    async for chunk in response.aiter_bytes():
+        content.extend(chunk)
+        if len(content) >= MAX_PAGE_BYTES:
+            break
+    return bytes(content[:MAX_PAGE_BYTES]).decode(response.encoding or "utf-8", errors="replace")
 
 
 def _meta(soup: BeautifulSoup, *names: str) -> str | None:
@@ -51,35 +75,42 @@ async def extract_article(url: str) -> Article:
         raise ArticleExtractionError("A valid HTTP or HTTPS article URL is required.")
     await _ensure_public_host(parsed.hostname)
     timeout = httpx.Timeout(12.0, connect=5.0)
-    headers = {"User-Agent": "ClearSightBot/1.0 (+educational project)"}
     try:
         # Redirects are followed manually so every destination is screened
         # before a request is sent, rather than only after it was reached.
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers=headers) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers=_REQUEST_HEADERS) as client:
             current_url = url
             for _ in range(4):
                 current_host = urlparse(current_url).hostname
                 if not current_host:
                     raise ArticleExtractionError("The article URL redirected to an invalid location.")
                 await _ensure_public_host(current_host)
-                response = await client.get(current_url)
-                if not response.is_redirect:
+                async with client.stream("GET", current_url) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise ArticleExtractionError("The article page returned an invalid redirect.")
+                        current_url = urljoin(current_url, location)
+                        continue
+                    response.raise_for_status()
+                    html = await _read_limited(response)
+                    final_url = str(response.url)
                     break
-                location = response.headers.get("location")
-                if not location:
-                    raise ArticleExtractionError("The article page returned an invalid redirect.")
-                current_url = urljoin(current_url, location)
             else:
                 raise ArticleExtractionError("The article page redirected too many times.")
-            response.raise_for_status()
     except httpx.TimeoutException as exc:
         raise ArticleExtractionError("The article page timed out.") from exc
     except httpx.HTTPStatusError as exc:
-        raise ArticleExtractionError(f"The article page returned HTTP {exc.response.status_code}.") from exc
+        code = exc.response.status_code
+        if code in _BLOCKED_STATUSES:
+            raise ArticleExtractionError(
+                f"This site does not allow automated readers (HTTP {code}). Paste the article text instead."
+            ) from exc
+        raise ArticleExtractionError(f"The article page returned HTTP {code}.") from exc
     except httpx.HTTPError as exc:
         raise ArticleExtractionError("The article page could not be retrieved.") from exc
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "aside", "noscript"]):
         tag.decompose()
     title = _meta(soup, "og:title", "twitter:title") or (soup.title.string.strip() if soup.title and soup.title.string else None)
@@ -96,6 +127,6 @@ async def extract_article(url: str) -> Article:
         body=body[:100_000],
         publisher=publisher,
         published_at=published_at,
-        url=str(response.url),
+        url=final_url,
         extraction_method="html_metadata_and_paragraphs",
     )

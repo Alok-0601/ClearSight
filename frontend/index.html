@@ -217,7 +217,7 @@
     background:radial-gradient(circle, currentColor, transparent 68%); opacity:.08; filter:blur(6px);
     animation:ringPulse 2.4s ease-out .1s both;
   }
-  .stamp-wrap.real::before{ color:var(--real); } .stamp-wrap.fake::before{ color:var(--fake); }
+  .stamp-wrap.real::before{ color:var(--real); } .stamp-wrap.fake::before{ color:var(--fake); } .stamp-wrap.uncertain::before{ color:var(--brass); }
   @keyframes ringPulse{ 0%{ transform:scale(.3); opacity:0; } 40%{ opacity:.14; } 100%{ transform:scale(1.3); opacity:0; } }
   .stamp{
     --tilt:-6deg;
@@ -228,7 +228,9 @@
   }
   .stamp-real{ color:var(--real); box-shadow:0 0 0 1px rgba(69,208,138,.15), 0 12px 34px -8px rgba(69,208,138,.4); }
   .stamp-fake{ color:var(--fake); --tilt:-3deg; box-shadow:0 0 0 1px rgba(239,81,66,.15), 0 12px 34px -8px rgba(239,81,66,.4); }
+  .stamp-uncertain{ color:var(--brass); --tilt:-4deg; box-shadow:0 0 0 1px rgba(201,153,47,.15), 0 12px 34px -8px rgba(201,153,47,.4); }
   .stamp-word{ font-family:'Fraunces', serif; font-style:italic; font-weight:900; font-size:clamp(2rem,6vw,2.7rem); letter-spacing:.04em; line-height:1; }
+  .stamp-uncertain .stamp-word{ font-size:clamp(1.6rem,5vw,2.2rem); }
   .stamp-sub{ font-size:.58rem; letter-spacing:.22em; margin-top:.45rem; opacity:.85; }
   @keyframes stampIn{ 0%{ transform:rotate(var(--tilt)) scale(2.4); opacity:0; } 55%{ transform:rotate(var(--tilt)) scale(.9); opacity:1; } 100%{ transform:rotate(var(--tilt)) scale(1); } }
 
@@ -240,6 +242,7 @@
   .tick-on{ transform:scaleY(1); }
   .tick-on.tick-real{ background:var(--real); box-shadow:0 0 8px -1px rgba(69,208,138,.6); }
   .tick-on.tick-fake{ background:var(--fake); box-shadow:0 0 8px -1px rgba(239,81,66,.6); }
+  .tick-on.tick-uncertain{ background:var(--brass); box-shadow:0 0 8px -1px rgba(201,153,47,.6); }
   .confidence-note{ text-align:center; font-size:.83rem; color:var(--paperdim); max-width:460px; margin:0 auto .5rem; line-height:1.6; }
 
   /* ---------- index card (article record) ---------- */
@@ -274,7 +277,7 @@
   .evidence-link:hover{ color:var(--brassbright); }
 
   .tag{ font-family:'IBM Plex Mono', monospace; font-size:.63rem; letter-spacing:.1em; text-transform:uppercase; padding:.28rem .62rem; border-radius:999px; border:1px solid currentColor; }
-  .tag-real{ color:var(--real); } .tag-fake{ color:var(--fake); } .tag-brass{ color:var(--brass); } .tag-muted{ color:var(--muted); }
+  .tag-real{ color:var(--real); } .tag-fake{ color:var(--fake); } .tag-uncertain{ color:var(--brass); } .tag-brass{ color:var(--brass); } .tag-muted{ color:var(--muted); }
   .tag-sm{ font-size:.58rem; padding:.16rem .42rem; flex:0 0 auto; }
 
   /* ---------- source status ---------- */
@@ -669,10 +672,10 @@
         return;
       }
       items.slice(0, 12).forEach(function(item){
-        const verdict = item.prediction === 'REAL' ? 'real' : 'fake';
+        const verdict = verdictClass(item);
         const titleText = (item.article && item.article.title) || item.title || 'Untitled submission';
         const row = h('button', { class:'history-row', attrs:{ type:'button' }, on:{ click: function(){ loadVerification(item.id); } } }, [
-          h('span', { class:'tag tag-' + verdict + ' tag-sm', text: item.prediction || '—' }),
+          h('span', { class:'tag tag-' + verdict + ' tag-sm', text: item.verdict || item.prediction || '—' }),
           h('span', { class:'history-title', text: titleText }),
           h('span', { class:'history-time mono', text: formatTime(item.created_at) })
         ]);
@@ -685,6 +688,12 @@
   }
 
   /* ---------- rendering ---------- */
+  /* 'real' | 'fake' | 'uncertain'. Older API versions have no verdict field. */
+  function verdictClass(result){
+    const v = result.verdict || result.prediction;
+    return v === 'REAL' ? 'real' : v === 'UNCERTAIN' ? 'uncertain' : 'fake';
+  }
+
   function renderMeter(confidence, verdict){
     const pct = Math.round(Math.min(Math.max(confidence, 0), 1) * 1000) / 10;
     const total = 24;
@@ -746,11 +755,11 @@
   function renderResult(result){
     const root = document.getElementById('result-area');
     root.innerHTML = '';
-    const verdict = result.prediction === 'REAL' ? 'real' : 'fake';
+    const verdict = verdictClass(result);
 
     const stamp = h('div', { class:'stamp stamp-' + verdict }, [
-      h('span', { class:'stamp-word', text: result.prediction === 'REAL' ? 'REAL' : 'FAKE' }),
-      h('span', { class:'stamp-sub mono', text:'CLEARSIGHT VERIFICATION DESK' })
+      h('span', { class:'stamp-word', text: verdict.toUpperCase() }),
+      h('span', { class:'stamp-sub mono', text: verdict === 'uncertain' ? 'MODEL LEANED ' + result.prediction : 'CLEARSIGHT VERIFICATION DESK' })
     ]);
     root.appendChild(h('div', { class:'stamp-wrap ' + verdict }, [stamp]));
 

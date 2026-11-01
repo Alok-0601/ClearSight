@@ -144,3 +144,13 @@ def test_root_redirects_to_docs() -> None:
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 307
     assert response.headers["location"] == "/docs"
+
+
+def test_low_confidence_reply_says_uncertain(monkeypatch) -> None:
+    from backend.routes import verification
+
+    monkeypatch.setattr(verification.ml_service, "predict", lambda title, body: ("FAKE", 0.58))
+    post_message(ARTICLE_TEXT)
+    reply = FakeTelegramAPI.calls[-1][2]
+    assert "Model verdict: UNCERTAIN" in reply
+    assert "leaned FAKE" in reply

@@ -46,7 +46,8 @@ class SourceStatus(BaseModel):
 
 class VerificationResponse(BaseModel):
     id: str
-    prediction: Literal["REAL", "FAKE"]
+    prediction: Literal["REAL", "FAKE"] = Field(description="Raw model output")
+    verdict: Literal["REAL", "FAKE", "UNCERTAIN"] = Field(description="The prediction, or UNCERTAIN when confidence is low")
     confidence: float = Field(ge=0, le=1)
     confidence_note: str
     article: Article
@@ -58,6 +59,7 @@ class VerificationResponse(BaseModel):
 class HistoryItem(BaseModel):
     id: str
     prediction: Literal["REAL", "FAKE"]
+    verdict: Literal["REAL", "FAKE", "UNCERTAIN"]
     confidence: float
     title: str | None = None
     url: str | None = None

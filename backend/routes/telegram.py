@@ -88,8 +88,13 @@ def _target_text(message: dict) -> str | None:
 
 
 def _format_result(result: VerificationResponse) -> str:
-    icon = "🔴" if result.prediction == "FAKE" else "🟢"
-    lines = [f"{icon} <b>Model verdict: {result.prediction}</b> ({result.confidence:.0%} confidence)"]
+    if result.verdict == "UNCERTAIN":
+        lines = [
+            f"🟡 <b>Model verdict: UNCERTAIN</b> (leaned {result.prediction}, only {result.confidence:.0%} confidence)"
+        ]
+    else:
+        icon = "🔴" if result.verdict == "FAKE" else "🟢"
+        lines = [f"{icon} <b>Model verdict: {result.verdict}</b> ({result.confidence:.0%} confidence)"]
     if result.article.title:
         lines.append(f"📰 {html.escape(result.article.title[:200])}")
 
