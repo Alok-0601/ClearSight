@@ -126,6 +126,11 @@ prediction, extracted metadata, evidence, and source status.
 | `GET` | `/history` | Fetch recent in-memory verification summaries |
 | `POST` | `/telegram/webhook` | Telegram bot updates (only when the bot is configured) |
 
+Each result has a `prediction` (the raw model output, `REAL` or `FAKE`) and a
+`verdict`, which is the same as `prediction` unless the confidence is below
+65%, in which case it is `UNCERTAIN`. The frontends and the Telegram bot show
+the `verdict`.
+
 History is kept in memory. On a serverless host such as Vercel each instance
 has its own memory and instances are recycled, so `/history` and
 `/verification/{id}` only show recent results from the instance that answers.

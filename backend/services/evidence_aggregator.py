@@ -7,8 +7,17 @@ from .news_service import search_news
 
 
 _STOPWORDS = {"a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it", "of", "on", "or", "that", "the", "to", "was", "with"}
-_FALSE_RATINGS = {"false", "fake", "incorrect", "misleading", "pants on fire", "scam", "hoax"}
-_TRUE_RATINGS = {"true", "correct", "accurate", "verified"}
+# Ratings are matched as whole words, mixed ratings first, so "Untrue",
+# "Inaccurate" or "Half true" are never read as the word "true"/"accurate".
+_MIXED_RATING = re.compile(
+    r"\b(half|partly|partially|mixture|mixed|unproven|unverified|unsupported|"
+    r"exaggerat\w*|missing context|needs context|lacks context|mostly true)\b"
+)
+_FALSE_RATING = re.compile(
+    r"\b(false|fake|incorrect|inaccurate|misleading|pants on fire|scam|hoax|untrue|"
+    r"fabricated|baseless|debunked|not (?:true|correct|accurate))\b"
+)
+_TRUE_RATING = re.compile(r"\b(true|correct|accurate|verified)\b")
 
 
 def _keywords(text: str) -> set[str]:
@@ -34,9 +43,11 @@ def _annotate(item: EvidenceItem, article_text: str) -> EvidenceItem:
     reason = "Related coverage found by keyword overlap; it is not a verdict on the submitted article."
     rating = (item.rating or "").lower()
     if item.type == "fact_check" and relevance == "high":
-        if any(token in rating for token in _FALSE_RATINGS):
+        if _MIXED_RATING.search(rating):
+            relation, reason = "related", "A matching fact check gave a mixed or unproven rating, so it neither supports nor contradicts the claim."
+        elif _FALSE_RATING.search(rating):
             relation, reason = "contradicts_claim", "A high-overlap fact check rated a matching claim as false or misleading."
-        elif any(token in rating for token in _TRUE_RATINGS):
+        elif _TRUE_RATING.search(rating):
             relation, reason = "supports_claim", "A high-overlap fact check rated a matching claim as true or accurate."
         else:
             relation, reason = "related", "A matching fact check was found, but its rating could not be mapped safely."

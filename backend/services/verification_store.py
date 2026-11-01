@@ -25,6 +25,7 @@ class VerificationStore:
             HistoryItem(
                 id=item.id,
                 prediction=item.prediction,
+                verdict=item.verdict,
                 confidence=item.confidence,
                 title=item.article.title,
                 url=item.article.url,

@@ -57,10 +57,12 @@ st.markdown(
     }
     .result-card.real { background: rgba(34, 197, 94, 0.10); border-color: #22C55E; }
     .result-card.fake { background: rgba(239, 68, 68, 0.10); border-color: #EF4444; }
+    .result-card.uncertain { background: rgba(234, 179, 8, 0.10); border-color: #EAB308; }
     .result-icon { font-size: 2.2rem; line-height: 1; }
     .result-label { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.02em; }
     .result-card.real .result-label { color: #22C55E; }
     .result-card.fake .result-label { color: #EF4444; }
+    .result-card.uncertain .result-label { color: #EAB308; }
     .result-sub { font-size: 0.92rem; color: rgba(255,255,255,0.7); margin-top: 0.15rem; }
     </style>
     """,
@@ -100,18 +102,24 @@ def request_verification(path: str, payload: dict[str, str]) -> dict[str, Any] |
 
 def render_result(result: dict[str, Any]) -> None:
     prediction = result["prediction"]
+    # Older API versions have no "verdict" field.
+    verdict = result.get("verdict", prediction)
     confidence = float(result["confidence"])
-    is_real = prediction == "REAL"
-    css_class = "real" if is_real else "fake"
-    icon = "✅" if is_real else "🚫"
+    if verdict == "UNCERTAIN":
+        css_class, icon, label = "uncertain", "⚠️", "UNCERTAIN"
+        sub = f"Model leaned {prediction} · confidence {confidence * 100:.1f}%"
+    else:
+        is_real = verdict == "REAL"
+        css_class, icon, label = ("real", "✅", "REAL NEWS") if is_real else ("fake", "🚫", "FAKE NEWS")
+        sub = f"Model confidence: {confidence * 100:.1f}%"
 
     st.markdown(
         f"""
         <div class="result-card {css_class}">
             <div class="result-icon">{icon}</div>
             <div>
-                <div class="result-label">{prediction} NEWS</div>
-                <div class="result-sub">Model confidence: {confidence * 100:.1f}%</div>
+                <div class="result-label">{label}</div>
+                <div class="result-sub">{sub}</div>
             </div>
         </div>
         """,
