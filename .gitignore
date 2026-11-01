@@ -40,3 +40,5 @@ Thumbs.db
 # API runtime and test output
 .pytest_cache/
 *.log
+.vercel
+.env*.local

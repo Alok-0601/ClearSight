@@ -1,7 +1,8 @@
 # Only the FastAPI backend is deployed to Vercel; keep everything else out of
 # the function bundle.
 .venv/
-.env
+.vercel/
+.env*
 app.py
 docs/
 frontend/
