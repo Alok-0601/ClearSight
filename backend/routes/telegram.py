@@ -17,6 +17,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from backend.schemas import Article, VerificationResponse, VerifyUrlRequest
 from backend.services.telegram_api import TelegramAPI
+from ._fact_check_text import claim_phrase, fact_check_parts
 from .verification import verify_article, verify_article_url
 
 
@@ -101,11 +102,14 @@ def _format_result(result: VerificationResponse) -> str:
     fact_checks = [item for item in result.evidence if item.type == "fact_check" and item.relevance != "low"][:3]
     news = [item for item in result.evidence if item.type == "news" and item.relevance != "low"][:3]
     if fact_checks:
-        lines.append("\n<b>Related fact checks</b>")
+        lines.append("\n<b>Fact checks</b>")
         for item in fact_checks:
-            rating = f" — rated <i>{html.escape(item.rating)}</i>" if item.rating else ""
-            publisher = f" ({html.escape(item.publisher)})" if item.publisher else ""
-            lines.append(f'• <a href="{html.escape(item.url)}">{html.escape(item.title[:120])}</a>{publisher}{rating}')
+            icon, publisher, rating, claim = fact_check_parts(item)
+            line = f"{icon} <b>{html.escape(publisher)}</b>"
+            line += f" rated {claim_phrase(item)} <b>{html.escape(rating)}</b>" if rating else f" checked {claim_phrase(item)}"
+            if claim:
+                line += f':\n"{html.escape(claim)}"'
+            lines.append(f'{line}\n<a href="{html.escape(item.url)}">Read the fact check</a>')
     if news:
         lines.append("\n<b>Related coverage</b>")
         for item in news:
