@@ -70,7 +70,7 @@ fact-checking.
 
 | Path | What it is |
 | --- | --- |
-| `backend/` | FastAPI app: verification routes, Telegram webhook, evidence services |
+| `backend/` | FastAPI app: verification routes, Telegram and WhatsApp webhooks, evidence services |
 | `preprocess.py` | Text cleaning, identical to the training pipeline |
 | `Models/` | Saved TF-IDF vectorizer and Linear SVM |
 | `nltk_data/` | NLTK resources used by `preprocess.py`, bundled for read-only hosts |
@@ -118,6 +118,7 @@ to turn them on. Run the tests with `pytest`.
 | `GET` | `/verification/{id}` | Fetch one recent verification result |
 | `GET` | `/history` | Fetch recent verification summaries |
 | `POST` | `/telegram/webhook` | Telegram bot updates (only when the bot is configured) |
+| `POST` | `/whatsapp/vonage/inbound`, `/whatsapp/vonage/status` | Vonage WhatsApp messages and delivery statuses (only when configured) |
 
 ```json
 POST /verify
@@ -199,6 +200,34 @@ set up your own:
 
 The webhook rejects requests without the secret header and limits each chat to
 5 checks per minute.
+
+## WhatsApp bot (Vonage sandbox)
+
+The same checker also answers on WhatsApp through the
+[Vonage Messages API Sandbox](https://developer.vonage.com/en/messages/concepts/messages-api-sandbox).
+Send it an article link or at least 40 characters of article text; "hi",
+"start" or "help" gets a short help message. Like the Telegram bot, it runs
+inside the API and its checks are not added to `/history`.
+
+1. In the Vonage Dashboard, open the Messages API Sandbox, choose WhatsApp and
+   join the sandbox from your phone as the page shows. Only numbers that have
+   joined can use the bot.
+2. On the same page, set the webhooks (API version v1) and click
+   **Save webhooks**:
+   - Inbound: `https://clearsight-api.vercel.app/whatsapp/vonage/inbound`
+   - Status: `https://clearsight-api.vercel.app/whatsapp/vonage/status`
+3. On Vercel, add these environment variables and redeploy:
+   - `VONAGE_API_KEY` and `VONAGE_API_SECRET`, from the Dashboard's API
+     settings. Without both, the two routes return 404.
+   - `VONAGE_SIGNATURE_SECRET` (optional, recommended), the account's
+     signature secret from the same settings page. When it is set, the webhooks
+     reject requests whose signed JWT or payload hash doesn't match.
+   - `VONAGE_MESSAGES_URL` (optional). It defaults to the sandbox endpoint
+     `https://messages-sandbox.nexmo.com/v1/messages`.
+
+The sandbox is free but allows about 100 messages a month and one per second,
+and the bot can only reply within 24 hours of your last message. Each number
+is limited to 5 checks per minute.
 
 ## Limitations
 

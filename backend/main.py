@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from backend.routes import router, telegram_router
+from backend.routes import router, telegram_router, whatsapp_vonage_router
 
 
 load_dotenv()
@@ -75,3 +75,4 @@ async def health() -> dict[str, str]:
 
 app.include_router(router)
 app.include_router(telegram_router)
+app.include_router(whatsapp_vonage_router)
