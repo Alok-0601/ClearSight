@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import HTTPException
 
 from backend.schemas import Article, VerificationResponse, VerifyUrlRequest
+from ._fact_check_text import claim_phrase, fact_check_parts
 
 
 logger = logging.getLogger(__name__)
@@ -93,11 +94,14 @@ def format_result(result: VerificationResponse, max_length: int | None = None, m
     fact_checks = [item for item in result.evidence if item.type == "fact_check" and item.relevance != "low"]
     news = [item for item in result.evidence if item.type == "news" and item.relevance != "low"]
     if fact_checks:
-        lines.append("\n*Related fact checks*")
+        lines.append("\n*Fact checks*")
         for item in fact_checks[:max_items]:
-            rating = f" — rated _{item.rating}_" if item.rating else ""
-            publisher = f" ({item.publisher})" if item.publisher else ""
-            lines.append(f"• {item.title[:120]}{publisher}{rating}\n{item.url}")
+            icon, publisher, rating, claim = fact_check_parts(item)
+            line = f"{icon} *{publisher}*"
+            line += f" rated {claim_phrase(item)} *{rating}*" if rating else f" checked {claim_phrase(item)}"
+            if claim:
+                line += f':\n"{claim}"'
+            lines.append(f"{line}\nRead the fact check: {item.url}")
     if news:
         lines.append("\n*Related coverage*")
         for item in news[:max_items]:

@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 import httpx
 
@@ -9,6 +10,12 @@ from .cache import TTLCache
 
 logger = logging.getLogger(__name__)
 _cache: TTLCache[list[EvidenceItem]] = TTLCache()
+# Some publishers' feeds leave template placeholders such as "%%title%%" in titles.
+_PLACEHOLDER = re.compile(r"%%\w+%%")
+
+
+def clean_text(text: str | None) -> str:
+    return " ".join(_PLACEHOLDER.sub(" ", text or "").split())
 
 
 async def search_fact_checks(query: str) -> tuple[list[EvidenceItem], SourceStatus]:
@@ -35,12 +42,12 @@ async def search_fact_checks(query: str) -> tuple[list[EvidenceItem], SourceStat
                 evidence.append(EvidenceItem(
                     source="google_fact_check",
                     type="fact_check",
-                    title=review.get("title") or claim.get("text") or "Fact check",
+                    title=clean_text(review.get("title")) or clean_text(claim.get("text")) or "Fact check",
                     url=url,
                     publisher=review.get("publisher", {}).get("name"),
                     published_at=None,
                     summary=review.get("textualRating"),
-                    claim=claim.get("text"),
+                    claim=clean_text(claim.get("text")) or None,
                     rating=review.get("textualRating"),
                     relation_reason="Relation is assigned only after lexical claim matching and rating analysis.",
                 ))
