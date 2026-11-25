@@ -30,15 +30,15 @@ HELP_TEXT = (
     "Send me a news article link, or paste at least 40 characters of article text, "
     "and I will run it through the ClearSight model and look for related fact checks.\n\n"
     "_This is a student project: a TF-IDF + Linear SVM model trained on the WELFake "
-    "dataset. It is a second opinion, not a fact check._"
+    "dataset and Indian news headlines (IFND). It is a second opinion, not a fact check._"
 )
 RATE_LIMITED_TEXT = "⏳ Too many checks in a minute. Please try again shortly."
 TIMEOUT_TEXT = "⌛ This is taking too long. Please try again, or paste the article text instead of the link."
 ERROR_TEXT = "⚠️ Something went wrong while checking this. Please try again later."
 DISCLAIMER = (
     "_Confidence comes from the model's decision margin and is not a calibrated "
-    "probability. The model learned writing patterns from WELFake (mostly US news), "
-    "so please confirm with a reliable source._"
+    "probability. The model learned writing patterns from WELFake (mostly US news) "
+    "and Indian news headlines, so please confirm with a reliable source._"
 )
 
 VerifyText = Callable[..., Awaitable[VerificationResponse]]
