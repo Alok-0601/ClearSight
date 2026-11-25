@@ -18,6 +18,19 @@ def test_source_markers_are_removed() -> None:
     assert "Lawmakers met on" in text
 
 
+def test_fact_check_verdict_words_and_typographic_quotes_are_normalised() -> None:
+    text = preprocess("", "Fact Check: No, this viral video isn’t real, it is morphed and FALSE")
+    for word in ("fact", "check", "viral", "morphed", "false"):
+        assert word not in text.split()
+    assert "isnt" in text.split()
+
+
+def test_scraping_residue_is_removed() -> None:
+    tokens = preprocess("", "The network lost 300, 000 subscribers last year pic. twitter. com").split()
+    assert "300000" in tokens
+    assert "000" not in tokens and "pic" not in tokens and "twitter" not in tokens
+
+
 def test_dateline_does_not_change_the_preprocessed_text() -> None:
     assert preprocess("", "WASHINGTON (Reuters) - " + FAKE_STORY) == preprocess("", FAKE_STORY)
 

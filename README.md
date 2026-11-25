@@ -2,7 +2,7 @@
 
 ClearSight checks whether a news article looks **real** or **fake**. Paste the
 article text or a link, and a TF-IDF + Linear SVM model trained on the WELFake
-dataset gives a verdict with a confidence score. Alongside it, ClearSight
+dataset and Indian news headlines (IFND) gives a verdict with a confidence score. Alongside it, ClearSight
 searches Google Fact Check Tools and GNews for related fact checks and
 coverage, so you can see what reliable sources have said.
 
@@ -38,13 +38,15 @@ REAL or FAKE.
 
 The model is trained on the [WELFake dataset](https://www.kaggle.com/datasets/vcclab/welfake-dataset), a collection of roughly 72,000 labeled news articles combining data from four different news datasets to reduce overfitting to any single source's writing style. Each row has a title, the article text, and a label marking it as real or fake. The dataset itself isn't included in this repo since it's a fairly large CSV — you can download it from the Kaggle link above if you want to retrain the model yourself.
 
+The final model also learns from the IFND dataset of Indian news headlines labelled TRUE or Fake (56,340 unique headlines), so it is not limited to US news.
+
 ## Approach
 
-The raw text goes through a cleanup pipeline before it ever reaches the model: source markers (news-agency datelines such as "WASHINGTON (Reuters) -", photo credits, a few outlet names, embedded-tweet residue and dates) are removed, the title and article body are combined, URLs/emails/HTML tags and extra whitespace are stripped out, everything is lowercased and stripped of punctuation, then tokenized, run through stopword removal, and lemmatized. What's left is a clean bag of words per article.
+The raw text goes through a cleanup pipeline before it ever reaches the model: source markers (news-agency datelines such as "WASHINGTON (Reuters) -", photo credits, a few outlet names, embedded-tweet residue, dates and fact-checkers' verdict words such as "fact check" and "viral") are removed, the title and article body are combined, URLs/emails/HTML tags and extra whitespace are stripped out, everything is lowercased and stripped of punctuation, then tokenized, run through stopword removal, and lemmatized. What's left is a clean bag of words per article.
 
 For turning that text into numbers, I compared TF-IDF against Word2Vec embeddings, and TF-IDF came out ahead. On the modeling side, I ran hyperparameter tuning and ended up with a linear SVM on top of TF-IDF (unigrams + bigrams, capped at 5000 features) as the best-performing setup — 95.2% accuracy and a 94.7% F1 score on the held-out test set.
 
-An error analysis then showed that much of that score came from source markers rather than content: adding a "WASHINGTON (Reuters) -" dateline to fake test articles flipped about a quarter of the model's correct FAKE predictions to REAL. The deployed model is therefore trained on text with those markers removed. It scores **93.1% accuracy, 92.4% F1 and 0.980 ROC-AUC** on the same held-out split, and the dateline trick no longer changes its prediction.
+An error analysis then showed that much of that score came from source markers rather than content: adding a "WASHINGTON (Reuters) -" dateline to fake test articles flipped about a quarter of the model's correct FAKE predictions to REAL. The deployed model is therefore trained on text with those markers removed, on WELFake together with the IFND Indian headlines (`scripts/train_model.py WELFake.csv --ifnd IFND.csv`). On the combined held-out test set it scores **89.2% accuracy, 85.8% F1 and 0.952 ROC-AUC** (91.0% on WELFake articles, 87.3% on Indian headlines), and the dateline trick no longer changes its prediction.
 
 The exploration and model comparison live in `notebooks/`; `scripts/train_model.py` trains the deployed model from the raw CSV. The app itself doesn't retrain anything — it just loads the saved vectorizer and model and reuses the exact same preprocessing steps at prediction time.
 
@@ -204,9 +206,10 @@ The webhook rejects requests without the secret header and limits each chat to
   naturally produce one, so it's derived from how far a prediction sits from
   the decision boundary. Treat it as a relative signal, not a precise
   percentage.
-- **The model learned from WELFake**, which is mostly US news, so it reflects
-  the writing patterns and topics in that data. It can misjudge news from
-  other regions, including Indian news, and it reacts to writing style (such
+- **The model learned from WELFake and IFND.** WELFake is mostly US news from
+  2016-2017 and the IFND rows are short Indian headlines whose fake examples are
+  mostly fact-check headlines, so it can still misjudge news unlike that data,
+  and it reacts to writing style (such
   as a news-agency dateline) as well as to content. A confident verdict can
   still be wrong.
 - **Some sites block automated readers.** For those links, paste the article

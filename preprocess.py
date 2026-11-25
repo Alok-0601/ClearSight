@@ -11,7 +11,10 @@ unreliable.
 Pipeline (identical order to training):
     title, text
         -> strip_shortcuts   (news-agency datelines, photo credits, outlet names,
-                              tweet residue, dates: source markers, not content)
+                              tweet residue, dates, fact-check verdict words:
+                              source markers, not content)
+    title + text
+        -> straight quotes and dashes
     title + text
         -> clean_text        (strip urls / emails / html / newlines / tabs / extra spaces)
         -> lowercase
@@ -81,18 +84,33 @@ _SHORTCUT_PATTERNS = [
     # outlet names and site boilerplate
     re.compile(r"21st century wire(?: says)?|21wire\S*", re.I),
     re.compile(r"\bbreitbart(?: news)?\b|\b(?:the )?new york times\b|\bwashington post\b", re.I),
-    # embedded-tweet residue
-    re.compile(r"pic\.twitter\.com/\S+|@\w+"),
+    # embedded-tweet residue ("pic.twitter.com/..." and the scraped "pic. twitter.")
+    re.compile(r"pic\.\s?twitter(?:\.com)?\S*|@\w+", re.I),
     # dates and years (the dataset's classes come from different time periods)
     re.compile(rf"\b{_MONTHS}\s+\d{{1,2}}(?:,\s*\d{{4}})?", re.I),
     re.compile(r"\b(?:19|20)\d{2}\b"),
+    # fact-checkers' verdict vocabulary: most fake rows in the Indian dataset
+    # (IFND) are fact-check headlines, so these words would label them by
+    # themselves instead of the claim's content
+    re.compile(r"\bfact[\s-]?check(?:ed|er|ers|ing|s)?\b", re.I),
+    re.compile(r"\b(?:false(?:ly)?|fake|misleading(?:ly)?|viral|morphed|photoshopped|doctored|hoax(?:es)?|"
+               r"debunk\w*|misinformation|fabricated|rumou?rs?)\b", re.I),
 ]
+
+# Curly quotes and dashes are not in string.punctuation, so without this
+# "didn’t" and "didn't" would become different tokens.
+_TYPOGRAPHIC = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-"})
+
+
+# Part of WELFake's real articles were scraped with a space inside numbers
+# ("300, 000"), which would make "000" a marker of real news.
+_SPLIT_NUMBER = re.compile(r"(\d),\s+(\d{3})\b")
 
 
 def strip_shortcuts(text: str) -> str:
     for pattern in _SHORTCUT_PATTERNS:
         text = pattern.sub(" ", text)
-    return text
+    return _SPLIT_NUMBER.sub(r"\1,\2", text)
 
 
 # ---------- Cleaning ----------
@@ -146,7 +164,7 @@ def preprocess(title: str, text: str) -> str:
     title = strip_shortcuts(title or "")
     text = strip_shortcuts(text or "")
 
-    content = f"{title} {text}"
+    content = f"{title} {text}".translate(_TYPOGRAPHIC)
 
     content = clean_text(content)
     content = content.lower()
