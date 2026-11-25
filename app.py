@@ -185,8 +185,8 @@ with st.sidebar:
     st.caption("Set `BACKEND_API_URL` in Streamlit secrets for the deployed site.")
     st.markdown("### Model")
     m1, m2 = st.columns(2)
-    m1.metric("Accuracy", "95.2%")
-    m2.metric("F1 Score", "94.7%")
+    m1.metric("Accuracy", "93.1%")
+    m2.metric("F1 Score", "92.4%")
     st.caption("WELFake dataset · confidence is an uncalibrated SVM margin.")
 
 

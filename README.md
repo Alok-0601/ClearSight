@@ -40,11 +40,13 @@ The model is trained on the [WELFake dataset](https://www.kaggle.com/datasets/vc
 
 ## Approach
 
-The raw text goes through a cleanup pipeline before it ever reaches the model: the title and article body are combined, URLs/emails/HTML tags and extra whitespace are stripped out, everything is lowercased and stripped of punctuation, then tokenized, run through stopword removal, and lemmatized. What's left is a clean bag of words per article.
+The raw text goes through a cleanup pipeline before it ever reaches the model: source markers (news-agency datelines such as "WASHINGTON (Reuters) -", photo credits, a few outlet names, embedded-tweet residue and dates) are removed, the title and article body are combined, URLs/emails/HTML tags and extra whitespace are stripped out, everything is lowercased and stripped of punctuation, then tokenized, run through stopword removal, and lemmatized. What's left is a clean bag of words per article.
 
-For turning that text into numbers, I compared TF-IDF against Word2Vec embeddings, and TF-IDF came out ahead. On the modeling side, I ran hyperparameter tuning and ended up with a linear SVM on top of TF-IDF (unigrams + bigrams, capped at 5000 features) as the best-performing setup — around 95% accuracy and a 94.7% F1 score on the held-out test set, with an ROC-AUC close to 99%.
+For turning that text into numbers, I compared TF-IDF against Word2Vec embeddings, and TF-IDF came out ahead. On the modeling side, I ran hyperparameter tuning and ended up with a linear SVM on top of TF-IDF (unigrams + bigrams, capped at 5000 features) as the best-performing setup — 95.2% accuracy and a 94.7% F1 score on the held-out test set.
 
-Everything from raw CSV to trained model lives in `notebooks/`. The app itself doesn't retrain anything — it just loads the saved vectorizer and model and reuses the exact same preprocessing steps at prediction time.
+An error analysis then showed that much of that score came from source markers rather than content: adding a "WASHINGTON (Reuters) -" dateline to fake test articles flipped about a quarter of the model's correct FAKE predictions to REAL. The deployed model is therefore trained on text with those markers removed. It scores **93.1% accuracy, 92.4% F1 and 0.980 ROC-AUC** on the same held-out split, and the dateline trick no longer changes its prediction.
+
+The exploration and model comparison live in `notebooks/`; `scripts/train_model.py` trains the deployed model from the raw CSV. The app itself doesn't retrain anything — it just loads the saved vectorizer and model and reuses the exact same preprocessing steps at prediction time.
 
 ## Evidence retrieval
 
