@@ -35,7 +35,7 @@ HELP_TEXT = (
     "and I will run it through the ClearSight model and look for related fact checks.\n\n"
     "In a group, reply to a message with /check.\n\n"
     "<i>This is a student project: a TF-IDF + Linear SVM model trained on the WELFake "
-    "dataset. It is a second opinion, not a fact check.</i>"
+    "dataset and Indian news headlines (IFND). It is a second opinion, not a fact check.</i>"
 )
 
 # Both are per process. On serverless hosts each instance keeps its own copy,
@@ -119,8 +119,8 @@ def _format_result(result: VerificationResponse) -> str:
 
     lines.append(
         "\n<i>Confidence comes from the model's decision margin and is not a calibrated "
-        "probability. The model learned writing patterns from WELFake (mostly US news), "
-        "so please confirm with a reliable source.</i>"
+        "probability. The model learned writing patterns from WELFake (mostly US news) "
+        "and Indian news headlines, so please confirm with a reliable source.</i>"
     )
     return "\n".join(lines)
 
